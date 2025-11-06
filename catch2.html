@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Catch Game Deluxe — Polished</title>
+    <style>
+      :root {
+        --bg-top: #c6f1ff;
+        --bg-mid: #87ceeb;
+        --bg-bot: #e0f7fa;
+        --accent: #ff5722;
+        --accent-2: #ffd54f;
+        --text: #fff;
+        --shadow: rgba(0, 0, 0, 0.6);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #1a1a1a;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica,
+          Arial, sans-serif;
+        color: var(--text);
+        user-select: none;
+      }
+      .wrap {
+        position: relative;
+        width: 100%;
+        height: 100dvh;
+        overflow: hidden;
+      }
+      canvas {
+        /* CSS size controls visual size; JS handles internal DPR size */
+        width: 100%;
+        height: 100%;
+        display: block;
+        background: linear-gradient(
+          180deg,
+          var(--bg-top) 0%,
+          var(--bg-mid) 40%,
+          var(--bg-bot) 100%
+        );
+        border-bottom: 4px solid #333;
+      }
+      #hud {
+        position: absolute;
+        top: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: clamp(16px, 4vw, 48px);
+        font-size: clamp(14px, 2.2vw, 22px);
+        font-weight: 800;
+        text-shadow: 1px 1px 2px #000;
+        z-index: 3;
+      }
+      #hud > div[aria-live] {
+        min-width: 6ch;
+        text-align: center;
+      }
+
+      .overlay {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: rgba(0, 0, 0, 0.25);
+        backdrop-filter: blur(2px);
+        z-index: 4;
+        visibility: hidden;
+        opacity: 0;
+        transition: opacity 0.25s ease, visibility 0.25s ease;
+      }
+      .overlay.show {
+        visibility: visible;
+        opacity: 1;
+      }
+      .panel {
+        text-align: center;
+        padding: 24px clamp(16px, 4vw, 36px);
+        border-radius: 16px;
+        background: rgba(0, 0, 0, 0.5);
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+      }
+      .panel h1 {
+        margin: 0 0 12px;
+        font-size: clamp(28px, 6vw, 48px);
+      }
+      .panel p {
+        margin: 4px 0 16px;
+        opacity: 0.9;
+      }
+      .btnrow {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+      button {
+        font-size: clamp(14px, 2.2vw, 20px);
+        padding: 10px 16px;
+        cursor: pointer;
+        border: none;
+        border-radius: 10px;
+        background: var(--accent);
+        color: white;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        transition: transform 0.06s ease, filter 0.2s ease, background 0.2s ease;
+      }
+      button:hover {
+        filter: brightness(1.05);
+      }
+      button:active {
+        transform: translateY(1px);
+      }
+      .ghost {
+        background: #374151;
+      }
+
+      /* Mobile controls */
+      .controls {
+        position: absolute;
+        inset: auto 0 12px 0;
+        z-index: 3;
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 10px;
+        padding: 0 12px;
+      }
+      .controls button {
+        padding: 14px 0;
+      }
+      @media (min-width: 900px) {
+        .controls {
+          display: none;
+        }
+      }
+
+      .toggles {
+        position: absolute;
+        right: 10px;
+        top: 10px;
+        z-index: 3;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .toggle {
+        background: #111827;
+      }
+      .toggle[aria-pressed="true"] {
+        background: #2563eb;
+      }
+      .chip {
+        background: #111827;
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        opacity: 0.9;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap" role="application" aria-label="Catch Game">
+      <div id="hud">
+        <div id="score" aria-live="polite">Score: 0</div>
+        <div id="lives" aria-live="polite">Lives: 3</div>
+        <div id="level" aria-live="polite">Level: 1</div>
+        <div id="best" aria-live="polite">Best: 0</div>
+      </div>
+
+      <div class="toggles">
+        <span class="chip">←/→ or A/D • Tap buttons</span>
+        <button
+          id="muteBtn"
+          class="toggle"
+          aria-pressed="false"
+          title="Toggle sound"
+        >
+          🔊
+        </button>
+        <button
+          id="pauseBtn"
+          class="toggle"
+          aria-pressed="false"
+          title="Pause (P)"
+        >
+          ⏸
+        </button>
+      </div>
+
+      <div
+        id="startScreen"
+        class="overlay show"
+        aria-modal="true"
+        role="dialog"
+      >
+        <div class="panel">
+          <h1>Catch Game</h1>
+          <p>
+            Catch the falling orbs. Avoid bombs! Every 10 points you level up
+            and the pace quickens.
+          </p>
+          <div class="btnrow">
+            <button id="startBtn" autofocus>Start</button>
+            <button id="howBtn" class="ghost">How to play</button>
+          </div>
+          <p id="how" hidden>
+            <small
+              >Move the basket with arrow keys or A/D. On mobile use the
+              on‑screen controls. Press P to pause. Toggle audio with the
+              speaker button.</small
+            >
+          </p>
+        </div>
+      </div>
+
+      <div id="pauseScreen" class="overlay" role="dialog" aria-modal="true">
+        <div class="panel">
+          <h1>Paused</h1>
+          <div class="btnrow">
+            <button id="resumeBtn">Resume (P)</button>
+            <button id="restartBtn" class="ghost">Restart</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="gameOver" class="overlay" role="dialog" aria-modal="true">
+        <div class="panel">
+          <h1>Game Over</h1>
+          <p id="finalStats">Score: 0 • Level: 1</p>
+          <div class="btnrow">
+            <button id="restart">Play again</button>
+          </div>
+        </div>
+      </div>
+
+      <canvas id="gameCanvas"></canvas>
+
+      <!-- Mobile controls -->
+      <div class="controls" aria-hidden="false">
+        <button id="leftBtn" class="ghost" aria-label="Move left">⬅</button>
+        <button id="stopBtn" class="ghost" aria-label="Stop">⏹</button>
+        <button id="rightBtn" class="ghost" aria-label="Move right">➡</button>
+      </div>
+    </div>
+
+    <script>
+      // ===== Canvas & DPR handling =====
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+      let dpr = window.devicePixelRatio || 1;
+
+      function resizeCanvas() {
+        const cssW = canvas.clientWidth;
+        const cssH = canvas.clientHeight;
+        dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.floor(cssW * dpr);
+        canvas.height = Math.floor(cssH * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      addEventListener("resize", resizeCanvas, { passive: true });
+      resizeCanvas();
+
+      // ===== Simple audio layer with graceful fallback =====
+      const audio = {
+        enabled: true,
+        ctx: null,
+        unlock() {
+          if (this.ctx) return;
+          try {
+            this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+          } catch {}
+        },
+        beep(freq = 880, dur = 0.08, type = "sine", gain = 0.05) {
+          if (!this.enabled || !this.ctx) return;
+          const o = this.ctx.createOscillator();
+          const g = this.ctx.createGain();
+          o.type = type;
+          o.frequency.value = freq;
+          g.gain.value = gain;
+          o.connect(g).connect(this.ctx.destination);
+          o.start();
+          o.stop(this.ctx.currentTime + dur);
+        },
+      };
+
+      // ===== Game State =====
+      const basket = { x: 0, y: 0, width: 110, height: 22, speed: 7 };
+      let targetX = 0;
+      let keys = { left: false, right: false };
+      let touchDir = 0; // -1 left, 0 none, 1 right
+      let objects = [];
+      let particles = [];
+      let score = 0,
+        lives = 3,
+        level = 1,
+        best = Number(localStorage.getItem("catch_best") || 0);
+      let playing = false,
+        paused = false;
+      let spawnEvery = 900; // ms, will decrease on level ups
+      let spawnTimer = 0; // ms accumulator
+      let lastTs = 0; // last RAF timestamp
+      let basketScale = 1;
+      let basketGlow = 0;
+
+      // ===== Utility =====
+      const rand = (a, b) => Math.random() * (b - a) + a;
+      function randomColor() {
+        const colors = ["#ff5252", "#ffca28", "#66bb6a", "#42a5f5", "#ab47bc"];
+        return colors[(Math.random() * colors.length) | 0];
+      }
+
+      // ===== HUD =====
+      const elScore = document.getElementById("score");
+      const elLives = document.getElementById("lives");
+      const elLevel = document.getElementById("level");
+      const elBest = document.getElementById("best");
+      function syncHUD() {
+        elScore.textContent = "Score: " + score;
+        elLives.textContent = "Lives: " + lives;
+        elLevel.textContent = "Level: " + level;
+        elBest.textContent = "Best: " + best;
+      }
+
+      // ===== Overlays =====
+      const startScreen = document.getElementById("startScreen");
+      const pauseScreen = document.getElementById("pauseScreen");
+      const gameOver = document.getElementById("gameOver");
+      const finalStats = document.getElementById("finalStats");
+      function show(el) {
+        el.classList.add("show");
+      }
+      function hide(el) {
+        el.classList.remove("show");
+      }
+
+      // ===== Input =====
+      addEventListener("keydown", (e) => {
+        if (e.key === "ArrowLeft" || e.key === "a") keys.left = true;
+        if (e.key === "ArrowRight" || e.key === "d") keys.right = true;
+        if (e.key.toLowerCase() === "p" || e.key === " ") {
+          e.preventDefault();
+          togglePause();
+        }
+        if (e.key === "Enter" && !playing) startGame();
+      });
+      addEventListener("keyup", (e) => {
+        if (e.key === "ArrowLeft" || e.key === "a") keys.left = false;
+        if (e.key === "ArrowRight" || e.key === "d") keys.right = false;
+      });
+
+      // Mouse / pointer move aim
+      canvas.addEventListener("mousemove", (e) => {
+        const rect = canvas.getBoundingClientRect();
+        targetX = e.clientX - rect.left - basket.width / 2;
+      });
+
+      // Visibility: auto pause
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) forcePause(true);
+      });
+
+      // Mobile controls
+      document
+        .getElementById("leftBtn")
+        .addEventListener("touchstart", () => (touchDir = -1), {
+          passive: true,
+        });
+      document
+        .getElementById("leftBtn")
+        .addEventListener("touchend", () => (touchDir = 0), { passive: true });
+      document
+        .getElementById("rightBtn")
+        .addEventListener("touchstart", () => (touchDir = 1), {
+          passive: true,
+        });
+      document
+        .getElementById("rightBtn")
+        .addEventListener("touchend", () => (touchDir = 0), { passive: true });
+      document
+        .getElementById("stopBtn")
+        .addEventListener("touchstart", () => (touchDir = 0), {
+          passive: true,
+        });
+
+      // UI buttons
+      document.getElementById("startBtn").addEventListener("click", startGame);
+      document.getElementById("howBtn").addEventListener("click", () => {
+        const h = document.getElementById("how");
+        h.hidden = !h.hidden;
+      });
+      document.getElementById("restart").addEventListener("click", startGame);
+      document
+        .getElementById("restartBtn")
+        .addEventListener("click", startGame);
+      document
+        .getElementById("resumeBtn")
+        .addEventListener("click", () => forcePause(false));
+      const muteBtn = document.getElementById("muteBtn");
+      const pauseBtn = document.getElementById("pauseBtn");
+      muteBtn.addEventListener("click", () => {
+        audio.enabled = !audio.enabled;
+        muteBtn.setAttribute("aria-pressed", String(!audio.enabled));
+        muteBtn.textContent = audio.enabled ? "🔊" : "🔇";
+      });
+      pauseBtn.addEventListener("click", togglePause);
+
+      // ===== Drawing =====
+      function drawBasket() {
+        // position basket near bottom with padding
+        basket.y = canvas.clientHeight - 48;
+        // bounce squash/stretch
+        const w = basket.width * basketScale;
+        const h = basket.height * (2 - basketScale);
+        const x = basket.x + (basket.width - w) / 2;
+        const y = basket.y + (basket.height - h);
+
+        const grad = ctx.createLinearGradient(x, y, x, y + h);
+        grad.addColorStop(0, "#ffb300");
+        grad.addColorStop(1, "#ff6f00");
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(x, y, w, h, 10);
+        else ctx.rect(x, y, w, h);
+        ctx.fill();
+
+        // glow
+        if (basketGlow > 0) {
+          const hue = (performance.now() / 10) % 360;
+          ctx.shadowColor = `hsla(${hue}, 100%, 50%, ${basketGlow})`;
+          ctx.shadowBlur = 20 * basketGlow;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+
+        // highlight
+        ctx.strokeStyle = "rgba(255,255,255,.4)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x + 5, y + 5);
+        ctx.lineTo(x + w - 5, y + 5);
+        ctx.stroke();
+
+        basketScale += (1 - basketScale) * 0.2;
+        basketGlow *= 0.95;
+      }
+
+      function drawObjects() {
+        for (const o of objects) {
+          // motion blur ellipse
+          ctx.fillStyle = o.color;
+          ctx.globalAlpha = 0.3;
+          ctx.beginPath();
+          ctx.ellipse(
+            o.x,
+            o.y - o.radius,
+            o.radius / 2,
+            o.radius * 1.5,
+            0,
+            0,
+            Math.PI * 2
+          );
+          ctx.fill();
+          ctx.globalAlpha = 1;
+
+          // orb gradient
+          const orbGrad = ctx.createRadialGradient(
+            o.x - 4,
+            o.y - 4,
+            2,
+            o.x,
+            o.y,
+            o.radius
+          );
+          orbGrad.addColorStop(0, "#fff");
+          orbGrad.addColorStop(0.2, o.color);
+          orbGrad.addColorStop(1, "black");
+          ctx.fillStyle = orbGrad;
+          ctx.beginPath();
+          ctx.arc(o.x, o.y, o.radius, 0, Math.PI * 2);
+          ctx.fill();
+
+          // icon for types
+          if (o.type === "bomb") {
+            ctx.fillStyle = "#111";
+            ctx.beginPath();
+            ctx.arc(o.x, o.y, o.radius * 0.4, 0, Math.PI * 2);
+            ctx.fill();
+          } else if (o.type === "heart") {
+            ctx.fillStyle = "#e11d48";
+            ctx.font = `${o.radius}px system-ui`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("❤", o.x, o.y);
+          } else if (o.type === "star") {
+            ctx.fillStyle = "#fffb00";
+            ctx.font = `${o.radius}px system-ui`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("★", o.x, o.y);
+          }
+        }
+      }
+
+      // ===== Particles =====
+      function spawnParticles(x, y, type = "spark") {
+        const count = type === "level" ? 34 : 12;
+        for (let i = 0; i < count; i++) {
+          particles.push({
+            x,
+            y,
+            vx: (Math.random() - 0.5) * (type === "level" ? 6 : 4),
+            vy: (Math.random() - 0.5) * (type === "level" ? 6 : 4),
+            life: 1,
+            color: type === "level" ? randomColor() : "gold",
+            shape: (Math.random() * 3) | 0,
+          });
+        }
+      }
+      function updateParticles(dt) {
+        for (let i = particles.length - 1; i >= 0; i--) {
+          const p = particles[i];
+          p.x += p.vx;
+          p.y += p.vy;
+          p.vy += 0.05;
+          p.life -= 0.02 * (dt / 16.7);
+          if (p.life <= 0) particles.splice(i, 1);
+        }
+      }
+      function drawParticles() {
+        for (const p of particles) {
+          ctx.globalAlpha = p.life;
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          const s = 3 * p.life;
+          if (p.shape === 0) {
+            ctx.arc(p.x, p.y, s, 0, Math.PI * 2);
+          } else if (p.shape === 1) {
+            ctx.fillRect(p.x - s, p.y - s, s * 2, s * 2);
+          } else {
+            ctx.moveTo(p.x, p.y - s);
+            ctx.lineTo(p.x + s, p.y + s);
+            ctx.lineTo(p.x - s, p.y + s);
+            ctx.closePath();
+          }
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      // ===== Physics & Logic =====
+      function circleRectIntersect(cx, cy, r, rx, ry, rw, rh) {
+        // clamp circle center to rect
+        const nx = Math.max(rx, Math.min(cx, rx + rw));
+        const ny = Math.max(ry, Math.min(cy, ry + rh));
+        const dx = cx - nx,
+          dy = cy - ny;
+        return dx * dx + dy * dy <= r * r;
+      }
+
+      function update(dt) {
+        // input
+        const move = (keys.left ? -1 : 0) + (keys.right ? 1 : 0) + touchDir;
+        if (move !== 0) targetX += move * basket.speed;
+        basket.x += (targetX - basket.x) * 0.2;
+        basket.x = Math.max(
+          0,
+          Math.min(canvas.clientWidth - basket.width, basket.x)
+        );
+
+        // objects
+        for (let i = objects.length - 1; i >= 0; i--) {
+          const o = objects[i];
+          o.y += o.speed * (dt / 16.7);
+
+          if (o.y - o.radius > canvas.clientHeight) {
+            // missed
+            objects.splice(i, 1);
+            if (o.type !== "bomb") {
+              lives--;
+              syncHUD();
+              audio.beep(220, 0.07, "sawtooth", 0.05);
+              if (lives <= 0) {
+                endGame();
+                return;
+              }
+            }
+            continue;
+          }
+
+          // catch collision
+          if (
+            circleRectIntersect(
+              o.x,
+              o.y,
+              o.radius,
+              basket.x,
+              basket.y,
+              basket.width,
+              basket.height
+            )
+          ) {
+            objects.splice(i, 1);
+            if (o.type === "bomb") {
+              // bomb hurts more
+              lives = Math.max(0, lives - 2);
+              spawnParticles(o.x, o.y, "spark");
+              audio.beep(120, 0.09, "square", 0.06);
+            } else {
+              score += o.type === "star" ? 3 : 1;
+              if (o.type === "heart") lives = Math.min(9, lives + 1);
+              spawnParticles(o.x, o.y, "spark");
+              basketScale = 0.85;
+              audio.beep(880, 0.05, "sine", 0.05);
+              // level up every 10 points
+              if (score > 0 && score % 10 === 0) {
+                level++;
+                spawnEvery = Math.max(380, spawnEvery - 80);
+                basketGlow = 1;
+                spawnParticles(canvas.clientWidth / 2, basket.y, "level");
+              }
+            }
+            syncHUD();
+          }
+        }
+
+        // spawn
+        spawnTimer += dt;
+        while (spawnTimer >= spawnEvery) {
+          spawnObject();
+          spawnTimer -= spawnEvery;
+        }
+
+        updateParticles(dt);
+      }
+
+      function spawnObject() {
+        const typeRoll = Math.random();
+        let type = "orb";
+        if (typeRoll < 0.08) type = "bomb";
+        else if (typeRoll < 0.12) type = "heart";
+        else if (typeRoll < 0.2) type = "star";
+
+        const radius = type === "bomb" ? 13 : 12;
+        const speed = 2 + Math.random() * (2 + level);
+        const color =
+          type === "bomb"
+            ? "#222"
+            : type === "heart"
+            ? "#fd8"
+            : type === "star"
+            ? "#ffd54f"
+            : randomColor();
+        objects.push({
+          x: rand(12, canvas.clientWidth - 12),
+          y: -radius * 2,
+          radius,
+          speed,
+          color,
+          type,
+        });
+      }
+
+      // ===== Loop =====
+      function frame(ts) {
+        if (!playing) return;
+        const dt = Math.min(50, ts - lastTs || 16.7); // clamp large jumps
+        lastTs = ts;
+        ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+        if (!paused) {
+          update(dt);
+        }
+        drawBasket();
+        drawObjects();
+        drawParticles();
+        requestAnimationFrame(frame);
+      }
+
+      // ===== Game flow =====
+      function startGame() {
+        hide(startScreen);
+        hide(gameOver);
+        hide(pauseScreen);
+        audio.unlock();
+        playing = true;
+        paused = false;
+        spawnTimer = 0;
+        lastTs = 0;
+        score = 0;
+        lives = 3;
+        level = 1;
+        spawnEvery = 900;
+        objects.length = 0;
+        particles.length = 0;
+        // place basket center
+        basket.x = (canvas.clientWidth - basket.width) / 2;
+        targetX = basket.x;
+        basketScale = 1;
+        basketGlow = 0;
+        syncHUD();
+        requestAnimationFrame(frame);
+      }
+
+      function endGame() {
+        playing = false;
+        paused = false;
+        best = Math.max(best, score);
+        localStorage.setItem("catch_best", best);
+        finalStats.textContent = `Score: ${score} • Level: ${level} • Best: ${best}`;
+        show(gameOver);
+      }
+
+      function togglePause() {
+        forcePause(!paused);
+      }
+      function forcePause(state) {
+        if (!playing && !state) return; // cannot resume if not playing
+        paused = state;
+        pauseBtn.setAttribute("aria-pressed", String(state));
+        if (paused) show(pauseScreen);
+        else hide(pauseScreen);
+      }
+
+      // initial HUD + start overlay visible
+      syncHUD();
+    </script>
+  </body>
+</html>
